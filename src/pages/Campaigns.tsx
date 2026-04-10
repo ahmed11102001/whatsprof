@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -19,6 +19,10 @@ export default function Campaigns() {
   
   const [campaigns, setCampaigns] = useState<any[]>([]);
 
+  // ✅ 1. تعريف الـ State للقوالب
+  const [availableTemplates, setAvailableTemplates] = useState<any[]>([]);
+  const [selectedTemplateContent, setSelectedTemplateContent] = useState("");
+
   // States لتخزين البيانات
   const [campaignName, setCampaignName] = useState("");
   const [template, setTemplate] = useState("hello_world");
@@ -26,6 +30,19 @@ export default function Campaigns() {
   const [manualNumbers, setManualNumbers] = useState("");
   const [scheduleTime, setScheduleTime] = useState("now");
   const [dateTime, setDateTime] = useState("");
+
+  // ✅ 2. جلب القوالب من الـ API عند فتح الصفحة
+  useEffect(() => {
+    fetch("/api/templates")
+      .then((res) => res.json())
+      .then((data) => {
+        // بنجيب القوالب المعتمدة بس
+        const approved = data.filter((t: any) => t.status === 'approved');
+        setAvailableTemplates(approved);
+        if (approved.length > 0) setTemplate(approved[0].name);
+      })
+      .catch((err) => console.error("Error fetching templates:", err));
+  }, []);
 
   // ✅ Regex صحيح للأرقام المصرية
   const isValidEgyptianNumber = (num: string) => {
@@ -85,7 +102,7 @@ export default function Campaigns() {
       return;
     }
     
-    // ✅ مسح الـ manualNumbers عشان ماتتكررش
+    // مسح الـ manualNumbers عشان ماتتكررش
     setManualNumbers("");
     setStep(2);
   };
@@ -100,7 +117,13 @@ export default function Campaigns() {
     setDateTime("");
   };
 
-  // ✅ دالة الإرسال الحقيقية مع API
+  // ✅ 3. تحديث دالة معاينة القالب (Preview)
+  const getTemplatePreview = () => {
+    const found = availableTemplates.find(t => t.name === template);
+    return found ? found.content : "يرجى اختيار قالب لعرض المعاينة...";
+  };
+
+  // دالة الإرسال الحقيقية مع API
   const handleCreateCampaign = async () => {
     if (numbers.length === 0) {
       alert("❌ من فضلك أضف أرقام جهات الاتصال أولاً");
@@ -122,7 +145,7 @@ export default function Campaigns() {
 
 📋 الاسم: ${campaignName}
 📱 عدد المستلمين: ${numbers.length}
-📝 القالب: ${template === 'hello_world' ? 'قالب الترحيب' : template === 'ramadan_offer' ? 'عرض رمضان' : 'مكافأة الولاء'}
+📝 القالب: ${template}
 ⏰ التوقيت: ${scheduleTime === 'now' ? 'فوراً' : dateTime}
 
 هل أنت متأكد من إرسال الحملة؟
@@ -132,7 +155,6 @@ export default function Campaigns() {
     
     setLoading(true);
     try {
-      // ✅ API الحقيقي
       const response = await fetch('https://whatsprof.vercel.app/api/send-bulk', {
         method: 'POST',
         headers: {
@@ -168,7 +190,6 @@ export default function Campaigns() {
       setIsCreateDialogOpen(false);
       resetForm();
     } catch (error: any) {
-      // ✅ Error Handling محترم
       console.error('API Error:', error);
       alert(`❌ فشل إنشاء الحملة: ${error.message || 'حدث خطأ غير متوقع'}`);
     } finally {
@@ -180,20 +201,6 @@ export default function Campaigns() {
   const deleteCampaign = (id: number) => {
     if (confirm("هل أنت متأكد من حذف هذه الحملة؟")) {
       setCampaigns(campaigns.filter(c => c.id !== id));
-    }
-  };
-
-  // معاينة القالب
-  const getTemplatePreview = () => {
-    switch(template) {
-      case 'hello_world':
-        return "👋 أهلاً بك! نشكرك على انضمامك إلينا. نحن سعداء بخدمتك...";
-      case 'ramadan_offer':
-        return "🌙 رمضان كريم! عرض خاص 30% خصم على جميع المنتجات. سارع بالاستفادة...";
-      case 'customer_loyalty':
-        return "🏆 أنت عميل مميز! احصل على مكافأة 50 نقطة ولاء عند شرائك التالي...";
-      default:
-        return "مرحباً! لدينا عرض خاص لك...";
     }
   };
 
@@ -422,7 +429,7 @@ export default function Campaigns() {
             </div>
           )}
 
-          {/* الخطوة 2 */}
+          {/* الخطوة 2: اختيار القالب */}
           {step === 2 && (
             <div className="space-y-6">
               <div className="space-y-2">
@@ -431,10 +438,16 @@ export default function Campaigns() {
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
+                  {/* ✅ 4. قائمة الاختيار الديناميكية */}
                   <SelectContent>
-                    <SelectItem value="hello_world">👋 قالب الترحيب الأساسي</SelectItem>
-                    <SelectItem value="ramadan_offer">🌙 عرض شهر رمضان</SelectItem>
-                    <SelectItem value="customer_loyalty">🏆 مكافأة ولاء العملاء</SelectItem>
+                    {availableTemplates.map((t) => (
+                      <SelectItem key={t.id} value={t.name}>
+                        {t.name === 'hello_world' ? '👋 قالب الترحيب' : t.name}
+                      </SelectItem>
+                    ))}
+                    {availableTemplates.length === 0 && (
+                      <SelectItem value="none" disabled>لا توجد قوالب معتمدة</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -499,7 +512,7 @@ export default function Campaigns() {
                 <div className="text-sm space-y-1 text-green-700">
                   <p>• الاسم: <strong>{campaignName || 'غير محدد'}</strong></p>
                   <p>• عدد المستلمين: <strong>{numbers.length}</strong></p>
-                  <p>• القالب: <strong>{template === 'hello_world' ? 'الترحيب' : template === 'ramadan_offer' ? 'عرض رمضان' : 'مكافأة الولاء'}</strong></p>
+                  <p>• القالب: <strong>{template}</strong></p>
                   <p>• التوقيت: <strong>{scheduleTime === 'now' ? 'إرسال فوري' : dateTime}</strong></p>
                 </div>
               </div>
