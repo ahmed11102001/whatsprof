@@ -8,8 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { 
-  Send, Plus, Calendar, Clock, ChevronLeft, Upload, 
-  FileSpreadsheet, X, Megaphone, Inbox, Trash2, Play, Users 
+  Send, Plus, Calendar, ChevronLeft, 
+  FileSpreadsheet, X, Megaphone, Trash2, Play, Users 
 } from 'lucide-react';
 
 export default function Campaigns() {
@@ -47,7 +47,7 @@ export default function Campaigns() {
 
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const bstr = evt.target?.result;
+      const bstr = (evt.target as any).result;
       const wb = XLSX.read(bstr, { type: 'binary' });
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
@@ -88,6 +88,16 @@ export default function Campaigns() {
     // ✅ مسح الـ manualNumbers عشان ماتتكررش
     setManualNumbers("");
     setStep(2);
+  };
+
+  // دالة إعادة تعيين النموذج
+  const resetForm = () => {
+    setStep(1);
+    setCampaignName("");
+    setNumbers([]);
+    setManualNumbers("");
+    setScheduleTime("now");
+    setDateTime("");
   };
 
   // ✅ دالة الإرسال الحقيقية مع API
@@ -164,15 +174,6 @@ export default function Campaigns() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const resetForm = () => {
-    setStep(1);
-    setCampaignName("");
-    setNumbers([]);
-    setManualNumbers("");
-    setScheduleTime("now");
-    setDateTime("");
   };
 
   // حذف حملة
@@ -411,7 +412,6 @@ export default function Campaigns() {
                 </div>
               )}
 
-              {/* ✅ تصحيح العدّاد */}
               <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg text-sm">
                 <span>إجمالي الأرقام الصالحة: <strong className="text-green-600">{numbers.length}</strong></span>
               </div>
