@@ -7,20 +7,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Plus, Calendar, Clock, ChevronLeft, Upload, FileSpreadsheet, X, Megaphone, Inbox, Trash2, Play } from 'lucide-react';
+import { 
+  Send, Plus, Calendar, Clock, ChevronLeft, Upload, 
+  FileSpreadsheet, X, Megaphone, Inbox, Trash2, Play, Users 
+} from 'lucide-react';
 
 export default function Campaigns() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   
-  // حملات تجريبية - هتتغير بعدين لما تتوصل مع API
-  const [campaigns, setCampaigns] = useState<any[]>([
-    // خلينا فاضيين دلوقتي عشان نظهر Empty State
-    // لو عايز تختبر بحطات بيانات، فك التعليق عن السطرين دول
-    // { id: 1, name: 'حملة رمضان', status: 'sent', date: '2024-04-10', recipients: 150, template: 'ramadan_offer' },
-    // { id: 2, name: 'ترحيب عملاء جدد', status: 'scheduled', date: '2024-04-15', recipients: 50, template: 'hello_world' }
-  ]);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
 
   // States لتخزين البيانات
   const [campaignName, setCampaignName] = useState("");
@@ -29,6 +26,19 @@ export default function Campaigns() {
   const [manualNumbers, setManualNumbers] = useState("");
   const [scheduleTime, setScheduleTime] = useState("now");
   const [dateTime, setDateTime] = useState("");
+
+  // ✅ Regex صحيح للأرقام المصرية
+  const isValidEgyptianNumber = (num: string) => {
+    return /^20\d{10}$/.test(num);
+  };
+
+  // تنظيف الأرقام
+  const cleanNumber = (num: string) => {
+    let cleaned = num.replace(/[^0-9]/g, '');
+    if (cleaned.startsWith('0')) cleaned = '20' + cleaned.slice(1);
+    if (!cleaned.startsWith('20') && cleaned.length === 10) cleaned = '20' + cleaned;
+    return cleaned;
+  };
 
   // معالجة ملف الإكسيل
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -43,9 +53,13 @@ export default function Campaigns() {
       const ws = wb.Sheets[wsname];
       const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
       
-      const extractedNumbers = data.flat().map(n => String(n).trim()).filter(n => /^\d+$/.test(n));
+      const extractedNumbers = data
+        .flat()
+        .map(n => cleanNumber(String(n).trim()))
+        .filter(isValidEgyptianNumber);
+      
       setNumbers(prev => [...new Set([...prev, ...extractedNumbers])]);
-      alert(`✅ تم استخراج ${extractedNumbers.length} رقم من الملف بنجاح!`);
+      alert(`✅ تم استخراج ${extractedNumbers.length} رقم صالح من الملف`);
     };
     reader.readAsBinaryString(file);
   };
@@ -57,7 +71,12 @@ export default function Campaigns() {
 
   // الانتقال للخطوة 2 مع معالجة الأرقام اليدوية
   const goToStep2 = () => {
-    const manualArr = manualNumbers.split("\n").map(n => n.trim()).filter(n => /^\d+$/.test(n));
+    // تنظيف الأرقام اليدوية
+    const manualArr = manualNumbers
+      .split("\n")
+      .map(n => cleanNumber(n.trim()))
+      .filter(isValidEgyptianNumber);
+    
     const allNumbers = [...new Set([...numbers, ...manualArr])];
     setNumbers(allNumbers);
     
@@ -66,10 +85,12 @@ export default function Campaigns() {
       return;
     }
     
+    // ✅ مسح الـ manualNumbers عشان ماتتكررش
+    setManualNumbers("");
     setStep(2);
   };
 
-  // دالة الإرسال النهائية مع التحقق والتأكيد
+  // ✅ دالة الإرسال الحقيقية مع API
   const handleCreateCampaign = async () => {
     if (numbers.length === 0) {
       alert("❌ من فضلك أضف أرقام جهات الاتصال أولاً");
@@ -101,8 +122,25 @@ export default function Campaigns() {
     
     setLoading(true);
     try {
-      // محاكاة API (استبدلها بالـ API الحقيقي بتاعك)
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // ✅ API الحقيقي
+      const response = await fetch('https://whatsprof.vercel.app/api/send-bulk', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          numbers: numbers,
+          templateName: template,
+          campaignName: campaignName,
+          scheduled: scheduleTime !== "now" ? dateTime : null
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || "فشل إرسال الحملة");
+      }
       
       // إضافة الحملة الجديدة للقائمة
       const newCampaign = {
@@ -116,11 +154,13 @@ export default function Campaigns() {
       
       setCampaigns(prev => [newCampaign, ...prev]);
       
-      alert(`✅ تم إنشاء الحملة بنجاح!\n📨 سيتم الإرسال إلى ${numbers.length} مستلم`);
+      alert(`✅ تم إنشاء الحملة بنجاح!\n📨 ${numbers.length} مستلم\n⏰ ${scheduleTime === 'now' ? 'سيتم الإرسال فوراً' : 'مجدولة في ' + dateTime}`);
       setIsCreateDialogOpen(false);
       resetForm();
-    } catch (error) {
-      alert("❌ حدث خطأ أثناء إنشاء الحملة");
+    } catch (error: any) {
+      // ✅ Error Handling محترم
+      console.error('API Error:', error);
+      alert(`❌ فشل إنشاء الحملة: ${error.message || 'حدث خطأ غير متوقع'}`);
     } finally {
       setLoading(false);
     }
@@ -182,7 +222,6 @@ export default function Campaigns() {
 
       {/* Empty State أو قائمة الحملات */}
       {campaigns.length === 0 ? (
-        // ✅ Empty State - لما مفيش حملات
         <div className="flex flex-col items-center justify-center py-16 lg:py-24">
           <div className="w-32 h-32 bg-gray-100 rounded-full flex items-center justify-center mb-6">
             <Megaphone className="w-16 h-16 text-gray-400" />
@@ -200,7 +239,6 @@ export default function Campaigns() {
           </Button>
         </div>
       ) : (
-        // قائمة الحملات - لو فيه حملات
         <div className="space-y-4">
           {/* Stats Summary */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -310,14 +348,13 @@ export default function Campaigns() {
         </div>
       )}
 
-      {/* Dialog إنشاء حملة جديدة - نفس الكود السابق */}
+      {/* Dialog إنشاء حملة جديدة */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent className="max-w-2xl text-right" dir="rtl">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">إنشاء حملة تسويقية</DialogTitle>
           </DialogHeader>
 
-          {/* Steps Indicator */}
           <div className="flex justify-between mb-8 px-10">
             {[1, 2, 3].map((s) => (
               <div key={s} className="flex flex-col items-center gap-2">
@@ -331,7 +368,7 @@ export default function Campaigns() {
             ))}
           </div>
 
-          {/* الخطوة 1: اختيار الجمهور */}
+          {/* الخطوة 1 */}
           {step === 1 && (
             <div className="space-y-6">
               <div className="border-2 border-dashed border-gray-200 p-8 rounded-xl text-center hover:border-green-400 transition-colors">
@@ -346,16 +383,15 @@ export default function Campaigns() {
               <div className="space-y-2">
                 <Label>أو إضافة أرقام يدوياً (رقم في كل سطر)</Label>
                 <Textarea 
-                  placeholder="201234567890
-201234567891"
+                  placeholder="201234567890"
                   value={manualNumbers}
                   onChange={(e) => setManualNumbers(e.target.value)}
                   className="min-h-[100px] font-mono"
                   dir="ltr"
                 />
+                <p className="text-xs text-gray-400">⚠️ الصيغة الصحيحة: 20 ثم 10 أرقام (مثال: 201234567890)</p>
               </div>
 
-              {/* عرض الأرقام المضافة */}
               {numbers.length > 0 && (
                 <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
                   <p className="text-sm font-bold text-blue-800 mb-2">📱 الأرقام المضافة ({numbers.length})</p>
@@ -375,8 +411,9 @@ export default function Campaigns() {
                 </div>
               )}
 
+              {/* ✅ تصحيح العدّاد */}
               <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg text-sm">
-                <span>إجمالي الأرقام: <strong className="text-green-600">{numbers.length + manualNumbers.split('\n').filter(n => n.trim()).length}</strong></span>
+                <span>إجمالي الأرقام الصالحة: <strong className="text-green-600">{numbers.length}</strong></span>
               </div>
 
               <Button className="w-full bg-green-500 hover:bg-green-600 text-white" onClick={goToStep2}>
@@ -385,7 +422,7 @@ export default function Campaigns() {
             </div>
           )}
 
-          {/* الخطوة 2: اختيار القالب */}
+          {/* الخطوة 2 */}
           {step === 2 && (
             <div className="space-y-6">
               <div className="space-y-2">
@@ -418,11 +455,11 @@ export default function Campaigns() {
             </div>
           )}
 
-          {/* الخطوة 3: اسم الحملة والجدولة */}
+          {/* الخطوة 3 */}
           {step === 3 && (
             <div className="space-y-6">
               <div className="space-y-2">
-                <Label>اسم الحملة (للإدارة الداخلية)</Label>
+                <Label>اسم الحملة</Label>
                 <Input 
                   placeholder="مثال: حملة رمضان 2024" 
                   value={campaignName} 
@@ -486,6 +523,3 @@ export default function Campaigns() {
     </div>
   );
 }
-
-// إضافة import Users
-import { Users } from 'lucide-react';
